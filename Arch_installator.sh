@@ -1,5 +1,5 @@
 #!/bin/bash
-# arch-auto-installer.sh - Automated Arch Linux Installer with dialog UI
+# Arch_installator.sh - Automated Arch Linux Installer with dialog UI
 # Copyright (C) 2025 Thinkpad_ultra7
 #
 # This program is free software: you can redistribute it and/or modify
