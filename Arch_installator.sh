@@ -1,11 +1,27 @@
 #!/bin/bash
+# arch-auto-installer.sh - Automated Arch Linux Installer with dialog UI
+# Copyright (C) 2025 Thinkpad_ultra7
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+
 set -e
 
-# Nettoyage automatique des fichiers temporaires à la fin
+# Automatically remove temporary files on exit
 TEMP_FILES=()
 trap 'rm -f "${TEMP_FILES[@]}"' EXIT
 
-# Fonction mktemp qui stocke les fichiers pour les supprimer plus tard
+# Function to create and track temp files
 new_temp_file() {
     local tmp
     tmp=$(mktemp)
@@ -13,15 +29,15 @@ new_temp_file() {
     echo "$tmp"
 }
 
-# Vérifier la présence de dialog
+# Check if dialog is installed
 if ! command -v dialog &>/dev/null; then
-  echo "dialog manquant, installation..."
+  echo "'dialog' is not installed, installing..."
   pacman -Sy --noconfirm dialog
 fi
 
-### -- 1. Arch ou Arch32
+### -- 1. Arch version
 ARCH_TMP=$(new_temp_file)
-dialog --menu "Quelle version d'Arch utilisez-vous ?" 10 50 2 \
+dialog --menu "Which version of Arch are you using?" 10 50 2 \
 1 "Arch Linux" \
 2 "Arch Linux 32" 2> "$ARCH_TMP"
 
@@ -33,29 +49,29 @@ elif [[ "$ARCH_CHOICE" == "2" ]]; then
     pacman-key --init
     pacman-key --populate archlinux32
 else
-    dialog --msgbox "Option invalide." 6 30
+    dialog --msgbox "Invalid option." 6 30
     exit 1
 fi
 
-### -- 2. BIOS ou UEFI
+### -- 2. BIOS or UEFI
 BOOTMODE_TMP=$(new_temp_file)
-dialog --menu "Démarrez-vous en BIOS ou UEFI ?" 10 50 2 \
+dialog --menu "Are you booting in BIOS or UEFI mode?" 10 50 2 \
 1 "UEFI" \
-2 "BIOS (legacy)" 2> "$BOOTMODE_TMP"
+2 "BIOS (Legacy)" 2> "$BOOTMODE_TMP"
 BOOTMODE=$(<"$BOOTMODE_TMP")
 
-### -- 3. Sélection du disque
-dialog --infobox "Recherche des disques..." 5 40
+### -- 3. Disk selection
+dialog --infobox "Detecting available disks..." 5 40
 sleep 1
 
 lsblk -d -e 7,11 -o NAME,SIZE,TYPE | grep disk | awk '{printf "/dev/%s \"%s\"\n", $1, $2}' > /tmp/disklist.txt
 DISK_TMP=$(new_temp_file)
-dialog --menu "Sélectionnez le disque à utiliser (TOUT sera effacé) :" 20 60 10 $(< /tmp/disklist.txt) 2> "$DISK_TMP"
+dialog --menu "Select the target disk (ALL DATA WILL BE ERASED):" 20 60 10 $(< /tmp/disklist.txt) 2> "$DISK_TMP"
 DEVICE=$(<"$DISK_TMP")
 
-### -- 4. Taille de swap
+### -- 4. Swap size
 SWAP_TMP=$(new_temp_file)
-dialog --menu "Taille de la swap ?" 10 40 3 \
+dialog --menu "Choose swap size:" 10 40 3 \
 1 "16 GB" \
 2 "32 GB" \
 3 "64 GB" 2> "$SWAP_TMP"
@@ -67,44 +83,44 @@ case $(<"$SWAP_TMP") in
   *) SWAPSIZE="16G" ;;
 esac
 
-### -- 5. Infos utilisateur
+### -- 5. User info
 LAYOUT_TMP=$(new_temp_file)
-dialog --inputbox "Layout clavier (ex: fr, us, ca):" 8 40 2> "$LAYOUT_TMP"
+dialog --inputbox "Keyboard layout (e.g., fr, us, ca):" 8 40 2> "$LAYOUT_TMP"
 LAYOUT=$(<"$LAYOUT_TMP")
 
 TIMEZONE_TMP=$(new_temp_file)
-dialog --inputbox "Timezone (ex: America/Toronto):" 8 40 2> "$TIMEZONE_TMP"
+dialog --inputbox "Timezone (e.g., America/Toronto):" 8 40 2> "$TIMEZONE_TMP"
 TIMEZONE=$(<"$TIMEZONE_TMP")
 
 USERNAME_TMP=$(new_temp_file)
-dialog --inputbox "Nom d'utilisateur :" 8 40 2> "$USERNAME_TMP"
+dialog --inputbox "Username:" 8 40 2> "$USERNAME_TMP"
 USERNAME=$(<"$USERNAME_TMP")
 
 ROOTPASS_TMP=$(new_temp_file)
-dialog --passwordbox "Mot de passe ROOT :" 8 40 2> "$ROOTPASS_TMP"
+dialog --passwordbox "ROOT password:" 8 40 2> "$ROOTPASS_TMP"
 ROOTPASS=$(<"$ROOTPASS_TMP")
 
 USERPASS_TMP=$(new_temp_file)
-dialog --passwordbox "Mot de passe de $USERNAME :" 8 40 2> "$USERPASS_TMP"
+dialog --passwordbox "Password for user $USERNAME:" 8 40 2> "$USERPASS_TMP"
 USERPASS=$(<"$USERPASS_TMP")
 
-### -- 6. Wi-Fi
+### -- 6. Wi-Fi credentials
 SSID_TMP=$(new_temp_file)
-dialog --inputbox "Nom SSID Wi-Fi :" 8 40 2> "$SSID_TMP"
+dialog --inputbox "Wi-Fi SSID:" 8 40 2> "$SSID_TMP"
 SSID=$(<"$SSID_TMP")
 
 WIFIPASS_TMP=$(new_temp_file)
-dialog --passwordbox "Mot de passe Wi-Fi :" 8 40 2> "$WIFIPASS_TMP"
+dialog --passwordbox "Wi-Fi password:" 8 40 2> "$WIFIPASS_TMP"
 WIFIPASS=$(<"$WIFIPASS_TMP")
 
-### -- 7. Choix du Desktop Environment
+### -- 7. Desktop Environment
 DE_TMP=$(new_temp_file)
-dialog --menu "Choisissez votre DE" 15 50 5 \
+dialog --menu "Choose your Desktop Environment:" 15 50 5 \
 1 "LXDE" \
 2 "XFCE" \
 3 "MATE" \
 4 "KDE Plasma" \
-5 "Gnome" 2> "$DE_TMP"
+5 "GNOME" 2> "$DE_TMP"
 
 case $(<"$DE_TMP") in
   1) DE_PKGS="lxde network-manager-applet" ;;
@@ -115,18 +131,24 @@ case $(<"$DE_TMP") in
   *) DE_PKGS="lxde network-manager-applet" ;;
 esac
 
-### -- 8. Config clavier temporaire
+### -- 8. Set temporary keyboard layout
 loadkeys "$LAYOUT"
 
-### -- 9. Connexion Wi-Fi
+### -- 9. Wi-Fi connection (dynamic device detection)
 if command -v iwctl &>/dev/null; then
-  iwctl station wlan0 connect "$SSID" <<< "$WIFIPASS"
+  WIFIDEV=$(iw dev | awk '$1=="Interface"{print $2; exit}')
+  if [[ -n "$WIFIDEV" ]]; then
+    iwctl station "$WIFIDEV" connect "$SSID" <<< "$WIFIPASS"
+  else
+    dialog --msgbox "Error: No wireless interface found!" 8 40
+    exit 1
+  fi
 else
-  dialog --msgbox "Erreur : 'iwctl' introuvable. Impossible de se connecter au Wi-Fi." 8 40
+  dialog --msgbox "Error: 'iwctl' not found. Cannot connect to Wi-Fi." 8 40
   exit 1
 fi
 
-### -- 10. Partitionnement auto
+### -- 10. Auto partitioning
 wipefs -a "$DEVICE"
 sgdisk -Z "$DEVICE"
 
@@ -159,11 +181,11 @@ if [[ -n "$EFI_PART" ]]; then
     mount "$EFI_PART" /mnt/boot/efi
 fi
 
-### -- 11. Installation de base
+### -- 11. Base installation
 pacstrap /mnt base linux linux-firmware networkmanager sudo vim $DE_PKGS
 genfstab -U /mnt >> /mnt/etc/fstab
 
-### -- 12. Configuration
+### -- 12. System configuration inside chroot
 arch-chroot /mnt /bin/bash <<EOF
 ln -sf /usr/share/zoneinfo/$TIMEZONE /etc/localtime
 hwclock --systohc
@@ -187,7 +209,7 @@ echo "%wheel ALL=(ALL) ALL" >> /etc/sudoers
 
 systemctl enable NetworkManager
 
-# GRUB install
+# Install and configure GRUB
 pacman -Sy --noconfirm grub
 if [[ "$BOOTMODE" == "1" ]]; then
     pacman -S --noconfirm efibootmgr
@@ -199,5 +221,6 @@ fi
 grub-mkconfig -o /boot/grub/grub.cfg
 EOF
 
-### -- 13. Fin
-dialog --msgbox "✅ Installation complète ! Vous pouvez redémarrer." 10 40
+### -- 13. Finish
+dialog --msgbox " Installation complete! You can now reboot." 10 40
+
