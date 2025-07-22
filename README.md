@@ -1,0 +1,2 @@
+# arch_installator
+Arch_linux_installator_with_Ncurses
