@@ -122,14 +122,28 @@ dialog --menu "Choose your Desktop Environment:" 15 50 5 \
 4 "KDE Plasma" \
 5 "GNOME" 2> "$DE_TMP"
 
-case $(<"$DE_TMP") in
-  1) DE_PKGS="lxde network-manager-applet" ;;
-  2) DE_PKGS="xfce4 xfce4-goodies network-manager-applet" ;;
-  3) DE_PKGS="mate mate-extra network-manager-applet" ;;
-  4) DE_PKGS="plasma kde-applications" ;;
-  5) DE_PKGS="gnome gnome-extra" ;;
-  *) DE_PKGS="lxde network-manager-applet" ;;
+DE_CHOICE=$(<"$DE_TMP")
+
+DE_TYPE_TMP=$(new_temp_file)
+dialog --menu "Install full or minimal version?" 10 50 2 \
+1 "Full" \
+2 "Minimal" 2> "$DE_TYPE_TMP"
+DE_TYPE=$(<"$DE_TYPE_TMP")
+
+case "$DE_CHOICE-$DE_TYPE" in
+  1-1) DE_PKGS="lxde network-manager-applet gvfs" ;;  # LXDE Full
+  1-2) DE_PKGS="lxde" ;;                               # LXDE Minimal
+  2-1) DE_PKGS="xfce4 xfce4-goodies network-manager-applet gvfs" ;;  # XFCE Full
+  2-2) DE_PKGS="xfce4 network-manager-applet" ;;                   # XFCE Minimal
+  3-1) DE_PKGS="mate mate-extra network-manager-applet gvfs" ;;    # MATE Full
+  3-2) DE_PKGS="mate network-manager-applet" ;;                    # MATE Minimal
+  4-1) DE_PKGS="plasma kde-applications" ;;                        # KDE Full
+  4-2) DE_PKGS="plasma" ;;                                         # KDE Minimal
+  5-1) DE_PKGS="gnome gnome-extra" ;;                              # GNOME Full
+  5-2) DE_PKGS="gnome" ;;                                          # GNOME Minimal
+  *) DE_PKGS="lxde network-manager-applet" ;;                      # Fallback
 esac
+
 
 ### -- 8. Set temporary keyboard layout
 loadkeys "$LAYOUT"
