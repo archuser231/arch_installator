@@ -177,20 +177,27 @@ else
 fi
 
 
-### -- 10. Auto partitioning
+### -- 10. Auto partitioning (using parted instead of sgdisk)
+dialog --infobox "Partitioning the disk..." 5 40
+sleep 2
+
 wipefs -a "$DEVICE"
-sgdisk -Z "$DEVICE"
+parted -s "$DEVICE" mklabel gpt
 
 if [[ "$BOOTMODE" == "1" ]]; then
-    sgdisk -n 1:0:+512M -t 1:ef00 "$DEVICE"
-    sgdisk -n 2:0:+"$SWAPSIZE" -t 2:8200 "$DEVICE"
-    sgdisk -n 3:0:0 -t 3:8300 "$DEVICE"
+    parted -s "$DEVICE" mkpart ESP fat32 1MiB 513MiB
+    parted -s "$DEVICE" set 1 boot on
+    parted -s "$DEVICE" mkpart primary linux-swap 513MiB $(echo "513 + ${SWAPSIZE%G} * 1024" | bc)MiB
+    parted -s "$DEVICE" mkpart primary ext4 $(echo "513 + ${SWAPSIZE%G} * 1024" | bc)MiB 100%
+
     EFI_PART="${DEVICE}1"
     SWAP_PART="${DEVICE}2"
     ROOT_PART="${DEVICE}3"
 else
-    sgdisk -n 1:0:+"$SWAPSIZE" -t 1:8200 "$DEVICE"
-    sgdisk -n 2:0:0 -t 2:8300 "$DEVICE"
+    parted -s "$DEVICE" mklabel msdos
+    parted -s "$DEVICE" mkpart primary linux-swap 1MiB $(echo "${SWAPSIZE%G} * 1024" | bc)MiB
+    parted -s "$DEVICE" mkpart primary ext4 $(echo "${SWAPSIZE%G} * 1024" | bc)MiB 100%
+
     EFI_PART=""
     SWAP_PART="${DEVICE}1"
     ROOT_PART="${DEVICE}2"
@@ -209,6 +216,7 @@ if [[ -n "$EFI_PART" ]]; then
     mkdir -p /mnt/boot/efi
     mount "$EFI_PART" /mnt/boot/efi
 fi
+
 
 ### -- 11. Base installation
 pacstrap /mnt base linux linux-firmware networkmanager sudo vim $DE_PKGS
