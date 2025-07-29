@@ -148,19 +148,34 @@ esac
 ### -- 8. Set temporary keyboard layout
 loadkeys "$LAYOUT"
 
-### -- 9. Wi-Fi connection (dynamic device detection)
-if command -v iwctl &>/dev/null; then
-  WIFIDEV=$(iw dev | awk '$1=="Interface"{print $2; exit}')
-  if [[ -n "$WIFIDEV" ]]; then
-    iwctl station "$WIFIDEV" connect "$SSID" <<< "$WIFIPASS"
+### -- 9. Connexion réseau (Ethernet ou Wi-Fi)
+
+# Tester si déjà connecté à Internet
+echo "[*] verification of the internet ..."
+if ping -q -c 2 -W 2 8.8.8.8 &>/dev/null; then
+  dialog --msgbox "youre already connected (probably by cable)." 8 60
+else
+  # Pas connecté, tenter Wi-Fi
+  if command -v iwctl &>/dev/null; then
+    WIFIDEV=$(iw dev | awk '$1=="Interface"{print $2; exit}')
+    if [[ -n "$WIFIDEV" ]]; then
+      iwctl station "$WIFIDEV" connect "$SSID" <<< "$WIFIPASS"
+      
+      # Vérifier à nouveau la connectivité après tentative Wi-Fi
+      if ! ping -q -c 2 -W 2 8.8.8.8 &>/dev/null; then
+        dialog --msgbox "Erreur : Impossible de se connecter au Wi-Fi. Aucune connexion réseau détectée." 8 60
+        exit 1
+      fi
+    else
+      dialog --msgbox "Error : no Wi-Fi interface found and no connection Internet active." 8 60
+      exit 1
+    fi
   else
-    dialog --msgbox "Error: No wireless interface found!" 8 40
+    dialog --msgbox "Error : 'iwctl' not found and no internet connection found." 8 60
     exit 1
   fi
-else
-  dialog --msgbox "Error: 'iwctl' not found. Cannot connect to Wi-Fi." 8 40
-  exit 1
 fi
+
 
 ### -- 10. Auto partitioning
 wipefs -a "$DEVICE"
