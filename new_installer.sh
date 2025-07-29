@@ -163,6 +163,20 @@ fi
 # -- 10. Partitioning with parted (no sgdisk or bc needed)
 dialog --infobox "Partitioning the disk..." 5 40
 sleep 2
+echo "[*] Unmounting any mounted partitions..."
+umount -R /mnt 2>/dev/null
+umount /dev/${DEVICE}* 2>/dev/null
+umount -l /dev/${DEVICE}* 2>/dev/null
+swapoff -a 2>/dev/null
+
+echo "[*] Killing processes using the disk..."
+PIDS=$(lsof | grep /dev/${DEVICE} | awk '{print $2}' | sort -u)
+for pid in $PIDS; do
+    kill -9 "$pid" 2>/dev/null
+done
+
+echo "[*] Wiping filesystem signatures..."
+
 
 wipefs -a "$DEVICE"
 
