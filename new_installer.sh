@@ -4,6 +4,8 @@
 
 set -e
 pacman -Sy --noconfirm dosfstools
+pacman -Sy --noconfirm arch-install-scripts
+
 
 
 # Remove temporary files on exit
