@@ -231,8 +231,10 @@ systemctl enable NetworkManager
 
 # GRUB installation
 pacman -Sy --noconfirm grub
+pacman -S --noconfirm dosfstools
+
 if [[ "$BOOTMODE" == "1" ]]; then
-    pacman -S --noconfirm efibootmgr
+    pacman -S --noconfirm efibootmgr 
     grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=GRUB
 else
     grub-install --target=i386-pc "$DEVICE"
