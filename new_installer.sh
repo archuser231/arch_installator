@@ -3,6 +3,8 @@
 # Copyright (C) 2025 Thinkpad_ultra7
 
 set -e
+pacman -Sy --noconfirm dosfstools
+
 
 # Remove temporary files on exit
 TEMP_FILES=()
