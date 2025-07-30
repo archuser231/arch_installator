@@ -1,18 +1,28 @@
 #!/bin/bash
-# Arch_installer.sh 
+# Arch_installer.sh
 # Copyright (C) 2025 Thinkpad_ultra7
 
 set -e
-pacman -Sy --noconfirm dosfstools
-pacman -Sy --noconfirm arch-install-scripts
 
+# Ensure running as root
+if [[ $EUID -ne 0 ]]; then
+    echo "This script must be run as root."
+    exit 1
+fi
 
+# Install needed packages if missing
+REQUIRED_PKGS=(dialog parted dosfstools e2fsprogs arch-install-scripts networkmanager)
+for pkg in "${REQUIRED_PKGS[@]}"; do
+  if ! pacman -Qq "$pkg" &>/dev/null; then
+    echo "Installing missing package: $pkg"
+    pacman -Sy --noconfirm "$pkg"
+  fi
+done
 
 # Remove temporary files on exit
 TEMP_FILES=()
 trap 'rm -f "${TEMP_FILES[@]}"' EXIT
 
-# Function to create and track temp files
 new_temp_file() {
     local tmp
     tmp=$(mktemp)
@@ -20,19 +30,13 @@ new_temp_file() {
     echo "$tmp"
 }
 
-# Check if dialog is installed
-if ! command -v dialog &>/dev/null; then
-  echo "'dialog' is not installed. Installing..."
-  pacman -Sy --noconfirm dialog
-fi
-
-# -- 1. Arch version
+# 1. Arch version
 ARCH_TMP=$(new_temp_file)
 dialog --menu "Which version of Arch are you using?" 10 50 2 \
 1 "Arch Linux" \
 2 "Arch Linux 32" 2> "$ARCH_TMP"
-
 ARCH_CHOICE=$(<"$ARCH_TMP")
+
 if [[ "$ARCH_CHOICE" == "1" ]]; then
     pacman-key --init
     pacman-key --populate archlinux
@@ -44,14 +48,14 @@ else
     exit 1
 fi
 
-# -- 2. BIOS or UEFI
+# 2. BIOS or UEFI
 BOOTMODE_TMP=$(new_temp_file)
 dialog --menu "Boot mode:" 10 50 2 \
 1 "UEFI" \
 2 "BIOS (Legacy)" 2> "$BOOTMODE_TMP"
 BOOTMODE=$(<"$BOOTMODE_TMP")
 
-# -- 3. Disk selection
+# 3. Disk selection
 dialog --infobox "Detecting available disks..." 5 40
 sleep 1
 lsblk -d -e 7,11 -o NAME,SIZE,TYPE | grep disk | awk '{printf "/dev/%s \"%s\"\n", $1, $2}' > /tmp/disklist.txt
@@ -59,7 +63,15 @@ DISK_TMP=$(new_temp_file)
 dialog --menu "Select the target disk (ALL DATA WILL BE ERASED):" 20 60 10 $(< /tmp/disklist.txt) 2> "$DISK_TMP"
 DEVICE=$(<"$DISK_TMP")
 
-# -- 4. Swap size
+# Confirm disk selection
+dialog --yesno "WARNING: All data on $DEVICE will be erased! Continue?" 7 60
+if [[ $? -ne 0 ]]; then
+    clear
+    echo "Installation aborted by user."
+    exit 1
+fi
+
+# 4. Swap size
 SWAP_TMP=$(new_temp_file)
 dialog --menu "Choose swap size:" 10 40 3 \
 1 "16 GB" \
@@ -73,7 +85,7 @@ case $(<"$SWAP_TMP") in
   *) SWAPSIZE="16G" ;;
 esac
 
-# -- 5. User info
+# 5. User info
 LAYOUT_TMP=$(new_temp_file)
 dialog --inputbox "Keyboard layout (e.g., us, fr, ca):" 8 40 2> "$LAYOUT_TMP"
 LAYOUT=$(<"$LAYOUT_TMP")
@@ -94,7 +106,7 @@ USERPASS_TMP=$(new_temp_file)
 dialog --passwordbox "Password for user $USERNAME:" 8 40 2> "$USERPASS_TMP"
 USERPASS=$(<"$USERPASS_TMP")
 
-# -- 6. Wi-Fi credentials
+# 6. Wi-Fi credentials
 SSID_TMP=$(new_temp_file)
 dialog --inputbox "Wi-Fi SSID:" 8 40 2> "$SSID_TMP"
 SSID=$(<"$SSID_TMP")
@@ -103,7 +115,7 @@ WIFIPASS_TMP=$(new_temp_file)
 dialog --passwordbox "Wi-Fi password:" 8 40 2> "$WIFIPASS_TMP"
 WIFIPASS=$(<"$WIFIPASS_TMP")
 
-# -- 7. Desktop Environment
+# 7. Desktop Environment
 DE_TMP=$(new_temp_file)
 dialog --menu "Choose your Desktop Environment:" 15 50 5 \
 1 "LXDE" \
@@ -111,7 +123,6 @@ dialog --menu "Choose your Desktop Environment:" 15 50 5 \
 3 "MATE" \
 4 "KDE Plasma" \
 5 "GNOME" 2> "$DE_TMP"
-
 DE_CHOICE=$(<"$DE_TMP")
 
 DE_TYPE_TMP=$(new_temp_file)
@@ -134,96 +145,108 @@ case "$DE_CHOICE-$DE_TYPE" in
   *)   DE_PKGS="lxde network-manager-applet" ;;
 esac
 
-# -- 8. Set temporary keyboard layout
+# 8. Set temporary keyboard layout
 loadkeys "$LAYOUT"
 
-# -- 9. Network check (Wi-Fi or Ethernet)
+# 9. Network check and connect if needed
 echo "[*] Checking for Internet connectivity..."
 if ping -q -c 2 -W 2 8.8.8.8 &>/dev/null; then
-  dialog --msgbox "Already connected to the Internet. Wi-Fi setup will be skipped." 8 60
+  dialog --msgbox "Internet connection detected. Skipping Wi-Fi setup." 8 60
 else
   if command -v iwctl &>/dev/null; then
     WIFIDEV=$(iw dev | awk '$1=="Interface"{print $2; exit}')
     if [[ -n "$WIFIDEV" ]]; then
+      echo "[*] Connecting to Wi-Fi $SSID..."
       iwctl station "$WIFIDEV" connect "$SSID" <<< "$WIFIPASS"
+      sleep 3
       if ! ping -q -c 2 -W 2 8.8.8.8 &>/dev/null; then
         dialog --msgbox "Failed to connect to Wi-Fi. No network detected." 8 60
         exit 1
       fi
     else
-      dialog --msgbox "No Wi-Fi interface found, and no Internet connection active." 8 60
+      dialog --msgbox "No Wi-Fi interface found, and no active Internet connection." 8 60
       exit 1
     fi
   else
-    dialog --msgbox "'iwctl' not found and no Internet connection detected." 8 60
+    dialog --msgbox "'iwctl' command not found, and no active Internet connection." 8 60
     exit 1
   fi
 fi
 
-# -- 10. Partitioning with parted (no sgdisk or bc needed)
-dialog --infobox "Partitioning the disk..." 5 40
-sleep 2
-echo "[*] Unmounting any mounted partitions..."
-umount -R /mnt 2>/dev/null
-umount /dev/${DEVICE}* 2>/dev/null
-umount -l /dev/${DEVICE}* 2>/dev/null
-swapoff -a 2>/dev/null
+# 10. Prepare disk: unmount, swapoff, kill process using disk
+echo "[*] Unmounting any mounted partitions on $DEVICE..."
+mountpoints=$(lsblk -nr "$DEVICE" | awk '{print $1}' | while read part; do mount | grep "/dev/$part" | awk '{print $3}'; done)
 
-echo "[*] Killing processes using the disk..."
-PIDS=$(lsof | grep /dev/${DEVICE} | awk '{print $2}' | sort -u)
-for pid in $PIDS; do
-    kill -9 "$pid" 2>/dev/null
+for mp in $mountpoints; do
+  echo "    Unmounting $mp"
+  umount -lf "$mp" || echo "    Failed to unmount $mp, skipping."
 done
 
-echo "[*] Wiping filesystem signatures..."
+echo "[*] Disabling swap on $DEVICE partitions..."
+for part in $(lsblk -ln -o NAME "$DEVICE" | tail -n +2); do
+  swapoff "/dev/$part" 2>/dev/null || true
+done
 
+echo "[*] Killing processes using $DEVICE..."
+PIDS=$(lsof | grep "/dev/$DEVICE" | awk '{print $2}' | sort -u)
+for pid in $PIDS; do
+  kill -9 "$pid" 2>/dev/null || true
+done
 
+echo "[*] Wiping filesystem signatures on $DEVICE..."
 wipefs -a "$DEVICE"
 
+# 11. Partitioning with parted
+echo "[*] Partitioning $DEVICE..."
 if [[ "$BOOTMODE" == "1" ]]; then
-    parted -s "$DEVICE" mklabel gpt
-    parted -s "$DEVICE" mkpart ESP fat32 1MiB 513MiB
-    parted -s "$DEVICE" set 1 boot on
+  parted -s "$DEVICE" mklabel gpt
+  parted -s "$DEVICE" mkpart ESP fat32 1MiB 513MiB
+  parted -s "$DEVICE" set 1 boot on
 
-    SWAP_MB=$((16#${SWAPSIZE%G} * 1024))
-    ROOT_START_MB=$((513 + SWAP_MB))
+  SWAP_MB=$(( ${SWAPSIZE%G} * 1024 ))
+  ROOT_START=$(( 513 + SWAP_MB ))
 
-    parted -s "$DEVICE" mkpart primary linux-swap 513MiB ${ROOT_START_MB}MiB
-    parted -s "$DEVICE" mkpart primary ext4 ${ROOT_START_MB}MiB 100%
+  parted -s "$DEVICE" mkpart primary linux-swap 513MiB ${ROOT_START}MiB
+  parted -s "$DEVICE" mkpart primary ext4 ${ROOT_START}MiB 100%
 
-    EFI_PART="${DEVICE}1"
-    SWAP_PART="${DEVICE}2"
-    ROOT_PART="${DEVICE}3"
+  EFI_PART="${DEVICE}1"
+  SWAP_PART="${DEVICE}2"
+  ROOT_PART="${DEVICE}3"
 else
-    parted -s "$DEVICE" mklabel msdos
-    SWAP_MB=$((16#${SWAPSIZE%G} * 1024))
-    parted -s "$DEVICE" mkpart primary linux-swap 1MiB ${SWAP_MB}MiB
-    parted -s "$DEVICE" mkpart primary ext4 ${SWAP_MB}MiB 100%
+  parted -s "$DEVICE" mklabel msdos
+  SWAP_MB=$(( ${SWAPSIZE%G} * 1024 ))
+  parted -s "$DEVICE" mkpart primary linux-swap 1MiB ${SWAP_MB}MiB
+  parted -s "$DEVICE" mkpart primary ext4 ${SWAP_MB}MiB 100%
 
-    EFI_PART=""
-    SWAP_PART="${DEVICE}1"
-    ROOT_PART="${DEVICE}2"
+  EFI_PART=""
+  SWAP_PART="${DEVICE}1"
+  ROOT_PART="${DEVICE}2"
 fi
 
 partprobe "$DEVICE"
 sleep 2
 
-[[ -n "$EFI_PART" ]] && mkfs.fat -F32 "$EFI_PART"
+# 12. Format partitions
+if [[ -n "$EFI_PART" ]]; then
+  mkfs.fat -F32 "$EFI_PART"
+fi
+
 mkswap "$SWAP_PART"
 swapon "$SWAP_PART"
 mkfs.ext4 "$ROOT_PART"
 
+# 13. Mount partitions
 mount "$ROOT_PART" /mnt
 if [[ -n "$EFI_PART" ]]; then
-    mkdir -p /mnt/boot/efi
-    mount "$EFI_PART" /mnt/boot/efi
+  mkdir -p /mnt/boot/efi
+  mount "$EFI_PART" /mnt/boot/efi
 fi
 
-# -- 11. Base installation
+# 14. Base system installation
 pacstrap /mnt base linux linux-firmware networkmanager sudo vim $DE_PKGS
 genfstab -U /mnt >> /mnt/etc/fstab
 
-# -- 12. System config in chroot
+# 15. Configure system in chroot
 arch-chroot /mnt /bin/bash <<EOF
 ln -sf /usr/share/zoneinfo/$TIMEZONE /etc/localtime
 hwclock --systohc
@@ -247,19 +270,19 @@ echo "%wheel ALL=(ALL) ALL" >> /etc/sudoers
 
 systemctl enable NetworkManager
 
-# GRUB installation
-pacman -Sy --noconfirm grub
-pacman -S --noconfirm dosfstools
+# Install and configure GRUB
+pacman -Sy --noconfirm grub dosfstools
 
 if [[ "$BOOTMODE" == "1" ]]; then
-    pacman -S --noconfirm efibootmgr 
-    grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=GRUB
+  pacman -S --noconfirm efibootmgr
+  grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=GRUB
 else
-    grub-install --target=i386-pc "$DEVICE"
+  grub-install --target=i386-pc "$DEVICE"
 fi
 
 grub-mkconfig -o /boot/grub/grub.cfg
 EOF
 
-# -- 13. Done
+# 16. Finish
 dialog --msgbox "Installation complete! You can now reboot the system." 10 40
+clear
